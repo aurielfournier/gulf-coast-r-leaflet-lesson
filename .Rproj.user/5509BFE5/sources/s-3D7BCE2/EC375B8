@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1553806438849.000,
+    "dirty" : false,
+    "encoding" : "ISO8859-1",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "EC375B8",
+    "lastKnownWriteTime" : 1552961404,
+    "last_content_update" : 1552961404,
+    "path" : "~/malawi_mapping_project/20190318_malawi_map_method_layer.R",
+    "project_path" : null,
+    "properties" : {
+        "cursorPosition" : "364,59",
+        "scrollLine" : "339"
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

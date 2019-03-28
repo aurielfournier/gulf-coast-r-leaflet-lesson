@@ -1,0 +1,93 @@
+
+theme_custom <- function (){
+  theme(axis.text.x = element_text(size = 12, color = "black"), 
+        axis.text.y = element_text(size = 12, color = "black"), 
+        axis.title.y = element_text(size = 20), 
+        plot.background = element_rect(fill="white", color="black"), 
+        panel.border = element_blank(), 
+        panel.grid.major = element_line(colour = NA), 
+        panel.grid.minor = element_line(colour = NA), 
+        title = element_text(size = 20), 
+        panel.background = element_rect(fill = "white"), 
+        axis.line.x = element_line(colour = "black"), 
+        axis.line.y = element_line(colour = "black"), 
+        strip.text = element_text(size = 15))}
+
+library(rgdal)
+library(maptools)
+library(tidyverse)
+library(gridExtra)
+library(maps)
+library(grid)
+library(sp)
+library(auriel)
+
+## --- from http://www.naturalearthdata.com/downloads/10m-physical-vectors/
+srange <- readShapePoly("gis/ne_10m_lakes") 
+
+## --- Only the largest lakes
+srange <- srange[srange$scalerank==0,]
+ 
+
+sites <- data.frame(area = c('nvca','lbnwr',"fgca","slnwr","tsca","ccnwr",
+                           "bkca","dcca","osca","tmpca"),
+                  lat = c(40.083979,40.086189,39.700193,39.590943,
+                          39.520186,39.258942,39.194173, 37.069277, 
+                          36.663006, 36.720828),
+                  long = c(-95.243862,-95.046928,-93.358501,-93.195568,
+                           -91.115087,-90.756951, -90.768015,-90.112259,
+                           -90.138140,-89.320857))
+
+usa <- readRDS("USA_adm1.rds")
+can <- readRDS("CAN_adm1.rds")
+mex <- readRDS("MEX_adm1.rds")
+
+
+mo <- usa[usa$NAME_1=="Missouri",]
+
+inset <- ggplot()+
+  geom_polygon(data=can,aes(x=long,y=lat,group=group), col="black", fill="white")+
+  geom_polygon(data=mex,aes(x=long,y=lat,group=group), col="black", fill="white")+
+  geom_polygon(data=usa,aes(x=long,y=lat,group=group), col="black", fill="white")+
+  geom_polygon(data=mo, aes(x=long,y=lat,group=group), col="black", fill="black")+
+  geom_polygon(data=srange, aes(x=long, y=lat, group=group), fill="white", col="black")+
+  coord_map("albers",lat0=25, lat1=60,xlim=c(-125,-70),ylim=c(25,57))+
+  theme_custom()+
+  theme(axis.title.y=element_blank(),
+        axis.title.x=element_blank())+
+  scale_x_continuous(breaks=c(-120,-100,-80))
+
+(mainmap <- ggplot()+
+  geom_polygon(data=mo, aes(x=long,y=lat,group=group), col="black", fill="grey")+
+  geom_point(data=sites, aes(x=long,y=lat,group=area), col="black",fill='black', size=4)+
+  theme_custom()+
+  coord_map("albers",lat0=25, lat1=60,xlim=c(-96,-89),ylim=c(41,35.5))+
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.line.x=element_blank(),
+        axis.line.y=element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.ticks.y = element_blank())+
+    # Northwest Region
+  annotate("rect",xmin=-93.6, xmax=-96, ymin=39.2, ymax=39.9, fill="white" , color="black")+
+  annotate("text", x=-94.8, y=39.6, label="Loess Bluff NWR \nNodaway Valley CA")+
+    # North Central Region
+    annotate("rect",xmin=-91, xmax=-93.5, ymin=38.5, ymax=39.2, fill="white" , color="black")+
+    annotate("text", x=-92.2, y=38.9, label="Swan Lake NWR \nFountain Grove CA")+
+    # Northeast Region
+    annotate("rect",xmin=-89.4, xmax=-92.1, ymin=40, ymax=40.8, fill="white" , color="black")+
+    annotate("text", x=-90.7, y=40.4, label="Clarence Cannon NWR \nTed Shanks CA \nBK Leach CA")+
+    # Southeast Region
+    annotate("rect",xmin=-90.7, xmax=-92.7, ymin=36.3, ymax=37.2, fill="white" , color="black")+
+    annotate("text", x=-91.7, y=36.7, label="Duck Creek CA \nOtter Slough CA \nTen Mile Pond CA"))
+  
+
+jpeg(file="figure_2.jpeg", width=150, height=150, units="mm", res=600)  
+grid.newpage()
+vpb_ <- viewport(width = 1, height = 1, x = 0.5, y = 0.5)  # the larger map
+vpa_ <- viewport(width = 0.4, height = 0.4, x = 0.25, y = 0.2)  # the inset 
+print(mainmap, vp = vpb_)
+print(inset, vp = vpa_)
+dev.off()  

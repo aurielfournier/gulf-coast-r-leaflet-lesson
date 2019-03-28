@@ -1,0 +1,365 @@
+library(raster)
+library(leaflet)
+library(maps)
+
+library(sf)
+library(tidyverse)
+library(auriel)
+
+library(htmlwidgets)
+library(readxl)
+library(rgdal)
+
+
+malawi_outline <- readOGR(dsn="./gis", layer="gadm36_MWI_0")
+
+pop <- raster("b5a32e83-2d88-4e81-741e-a2a9a60e68ab.tif")
+
+crs(pop) <- CRS('+init=EPSG:4326')
+
+masked_pop <- mask(pop, malawi_outline)
+
+df <- data.frame(lat = c(-13.155600, -8.111137,-8.111137,-13.155600),
+                 long = c(36.849227,36.849227,31.700125,31.700125))
+
+# create spatial points data frame
+spg <- df
+coordinates(spg) <- ~ long + lat
+# coerce to SpatialPixelsDataFrame
+gridded(spg) <- TRUE
+
+crs(spg) <- CRS('+init=EPSG:4326')
+
+masked_pop_n <- mask(masked_pop, spg)
+
+facilities <- read_excel("Malawi - Northern Region - UPDATED Master Facility List.xlsx") %>%
+      mutate(lat = as.numeric(lat),
+             long = as.numeric(long),
+             radius = 5000,
+             ftype = ifelse(Updated_Facility_Type == "District Hospital","Hospital",
+                 ifelse(Updated_Facility_Type == "Rural/Community Hospital", "Hospital",
+                         ifelse(Updated_Facility_Type == "Central Hospital", "Hospital",
+   ifelse(Updated_Facility_Type == "Other Hospital" , "Hospital", Updated_Facility_Type)))),
+             fftype = gsub(" ", "", ftype, fixed = TRUE),
+             owner_type = Updated_Ownership_Type,
+             longitude = long,
+             latitude = lat)  %>%
+     filter(!is.na(lat),
+            !is.na(long)) %>%
+     select(Facility_Name, ftype,fftype, latitude, longitude, owner_type)
+
+methods <- read.csv("Methods_Sold_by_Facility_Type_Malawi.csv",
+                        stringsAsFactors = FALSE) %>%
+                mutate(ftype=facility_type)
+
+mergedf <- inner_join(facilities, methods, by="ftype") %>%
+            select(-ftype, -facility_type, -facility_owner) %>%
+            gather("method","value", -fftype, -latitude, -longitude,
+                   -owner_type, -Facility_Name) %>%
+            filter(value == 1)
+
+Oral     <- mergedf %>% filter(method == "Orals")
+IUDs     <- mergedf %>% filter(method == "IUDs") %>% 
+                            mutate(method = "Intrauterine Device")
+EC       <- mergedf %>% filter(method == "EC") %>% 
+                            mutate(method = "Emergency Contraception")
+
+Sayana   <- mergedf %>% filter(method == "sayana_press")
+Inject   <- mergedf %>% filter(method == "Injectables")
+Implants <- mergedf %>% filter(method == "Implants")
+
+OralNGO <- Oral %>% filter(owner_type=="NGO/FBO")
+OralPub <- Oral %>% filter(owner_type=="Public")
+OralPri <- Oral %>% filter(owner_type=="Private")
+
+IUDsNGO <- IUDs %>% filter(owner_type=="NGO/FBO")
+IUDsPub <- IUDs %>% filter(owner_type=="Public")
+IUDsPri <- IUDs %>% filter(owner_type=="Private")
+
+ECNGO <- EC %>% filter(owner_type=="NGO/FBO")
+ECPub <- EC %>% filter(owner_type=="Public")
+ECPri <- EC %>% filter(owner_type=="Private")
+
+SayanaNGO <- Sayana %>% filter(owner_type=="NGO/FBO")
+SayanaPub <- Sayana %>% filter(owner_type=="Public")
+SayanaPri <- Sayana %>% filter(owner_type=="Private")
+
+InjectNGO <- Inject %>% filter(owner_type=="NGO/FBO")
+InjectPub <- Inject %>% filter(owner_type=="Public")
+InjectPri <- Inject %>% filter(owner_type=="Private")
+
+ImplantsNGO <- Implants %>% filter(owner_type=="NGO/FBO")
+ImplantsPub <- Implants %>% filter(owner_type=="Public")
+ImplantsPri <- Implants %>% filter(owner_type=="Private")
+
+health_icons <- awesomeIconList(
+  HealthCentre   = makeAwesomeIcon(icon = "medkit", library = "fa", 
+                                   markerColor = "lightgray"),
+  Hospital   = makeAwesomeIcon(icon = "hospital-o", library = "fa", 
+                                      markerColor = "lightgray"),
+  HealthPost = makeAwesomeIcon(icon = "plus-square", library = "fa", 
+                               markerColor = "lightgray"),
+  Dispensary = makeAwesomeIcon(icon = "arrows", library="fa",
+                               markerColor = "lightgray"),
+  Clinic = makeAwesomeIcon(text = "C", library="fa",
+                               markerColor = "lightgray"),
+  MedicineStore = makeAwesomeIcon(text = "M", library="fa",
+                               markerColor = "lightgray"),
+  Pharmacy = makeAwesomeIcon(text = "P", library="fa",
+                               markerColor = "lightgray")
+)
+
+
+
+
+html_legend <- "<i class='fa fa-medkit' aria-hidden='true'></i>Health Centre<br/>
+<i class='fa fa-hospital-o' aria-hidden='true'></i>Hospital<br/><i class='fa fa-arrows' aria-hidden='true'></i>Dispensary<br/><i class='fa fa-plus-square' aria-hidden='true'></i>Health Post<br/><i>P</i>Pharmacy<br/><i>M</i>Medicine Store<br/><i>C</i>Clinic<br/><img src='https://i.imgur.com/xHTu6ur.png'>Private<br/><img src='https://i.imgur.com/IJh9g6T.png'>Public<br/><img src='https://i.imgur.com/MPArqpQ.png'>NGO/FBO<br/>"
+
+
+
+
+pal <- colorNumeric("Greens", 
+                    domain = unique(values(masked_pop)),
+                    na.color ="#00000000",
+                    alpha = FALSE)
+
+
+m <- leaflet() %>%
+  setView(lng = 33.862183, lat = -11.126229, zoom = 08) %>%
+  addTiles() %>%
+  addRasterImage(x=masked_pop, 
+                colors=colorNumeric("Greens", 
+                na.color="#00000000",domain=NULL)) %>% 
+  addLegend(#pal = pal, 
+    values = unique(values(masked_pop)),
+    pal=colorNumeric("Greens", 
+              na.color="#00000000",domain=NULL),
+            title = "People per km") %>%
+  addAwesomeMarkers(
+    data=OralNGO,
+    group = "Oral",
+    icon = ~health_icons[fftype],
+#    popup = Oral$fftype,
+    label = Oral$Facility_Name,
+    clusterOptions = markerClusterOptions()) %>%
+  addCircles(
+    data=OralNGO,
+    group="Oral",
+    radius=5000,
+    color="blue"
+  ) %>%
+  addAwesomeMarkers(
+    data=OralPub,
+    group = "Oral",
+    icon = ~health_icons[fftype],
+#    popup = Oral$fftype,
+    label = Oral$Facility_Name,
+    clusterOptions = markerClusterOptions()) %>%
+  addCircles(
+    data=OralPub,
+    group="Oral",
+    radius=5000,
+    color="purple"
+  ) %>%
+  addAwesomeMarkers(
+    data=OralPri,
+    group = "Oral",
+    icon = ~health_icons[fftype],
+#    popup = Oral$fftype,
+    label = Oral$Facility_Name,
+    clusterOptions = markerClusterOptions()) %>%
+  addCircles(
+    data=OralPri,
+    group="Oral",
+    radius=5000,
+    color="orange"
+  ) %>%
+  addAwesomeMarkers(
+    data=IUDsNGO,
+    group = "Intrauterine Device",
+    icon = ~health_icons[fftype],
+#    popup = IUDsNGO$fftype,
+    label = IUDsNGO$Facility_Name,
+    clusterOptions = markerClusterOptions()) %>%
+  addCircles(
+    data=IUDsNGO,
+    group="Intrauterine Device",
+    radius=5000,
+    color="blue"
+  ) %>%
+  addAwesomeMarkers(
+    data=IUDsPub,
+    group = "Intrauterine Device",
+    icon = ~health_icons[fftype],
+#    popup = IUDsPub$fftype,
+    label = IUDsPub$Facility_Name,
+    clusterOptions = markerClusterOptions()) %>%
+  addCircles(
+    data=IUDsPub,
+    group="Intrauterine Device",
+    radius=5000,
+    color="purple"
+  ) %>%
+  addAwesomeMarkers(
+    data=ImplantsNGO,
+    group = "Implants",
+    icon = ~health_icons[fftype],
+#    popup = ImplantsNGO$fftype,
+    label = ImplantsNGO$Facility_Name,
+    clusterOptions = markerClusterOptions()) %>%
+  addCircles(
+    data=ImplantsNGO,
+    group="Implants",
+    radius=5000,
+    color="blue"
+  ) %>%
+  addAwesomeMarkers(
+    data=ImplantsPub,
+    group = "Implants",
+    icon = ~health_icons[fftype],
+#    popup = ImplantsPub$fftype,
+    label = ImplantsPub$Facility_Name,
+    clusterOptions = markerClusterOptions()) %>%
+  addCircles(
+    data=ImplantsPub,
+    group="Implants",
+    radius=5000,
+    color="purple"
+  ) %>%
+  addAwesomeMarkers(
+    data=ImplantsPri,
+    group = "Implants",
+    icon = ~health_icons[fftype],
+#    popup = ImplantsPri$fftype,
+    label = ImplantsPri$Facility_Name,
+    clusterOptions = markerClusterOptions()) %>%
+  addCircles(
+    data=ImplantsPri,
+    group="Implants",
+    radius=5000,
+    color="orange"
+  )  %>%
+  addAwesomeMarkers(
+    data=InjectNGO,
+    group = "Injectables",
+    icon = ~health_icons[fftype],
+#    popup = InjectNGO$fftype,
+    label = InjectNGO$Facility_Name,
+    clusterOptions = markerClusterOptions()) %>%
+  addCircles(
+    data=InjectNGO,
+    group="Injectables",
+    radius=5000,
+    color="blue"
+  ) %>%
+  addAwesomeMarkers(
+    data=InjectPub,
+    group = "Injectables",
+    icon = ~health_icons[fftype],
+#    popup = InjectPub$fftype,
+    label = InjectPub$Facility_Name,
+    clusterOptions = markerClusterOptions()) %>%
+  addCircles(
+    data=InjectPub,
+    group="Injectables",
+    radius=5000,
+    color="purple"
+  ) %>%
+  addAwesomeMarkers(
+    data=InjectPri,
+    group = "Injectables",
+    icon = ~health_icons[fftype],
+#    popup = InjectPri$fftype,
+    label = InjectPri$Facility_Name,
+    clusterOptions = markerClusterOptions()) %>%
+  addCircles(
+    data=InjectPri,
+    group="Injectables",
+    radius=5000,
+    color="orange"
+  ) %>%
+  addAwesomeMarkers(
+    data=ECNGO,
+    group = "Emergency Contraception",
+    icon = ~health_icons[fftype],
+#    popup = ECNGO$fftype,
+    label = ECNGO$Facility_Name,
+    clusterOptions = markerClusterOptions()) %>%
+  addCircles(
+    data=ECNGO,
+    group="Emergency Contraception",
+    radius=5000,
+    color="blue"
+  ) %>%
+  addAwesomeMarkers(
+    data=ECPub,
+    group = "Emergency Contraception",
+    icon = ~health_icons[fftype],
+#    popup = ECPub$fftype,
+    label = ECPub$Facility_Name) %>%
+  addCircles(
+    data=ECPub,
+    group="Emergency Contraception",
+    radius=5000,
+    color="purple"
+  ) %>%
+  addAwesomeMarkers(
+    data=ECPri,
+    group = "Emergency Contraception",
+    icon = ~health_icons[fftype],
+#    popup = ECPri$fftype,
+    label = ECPri$Facility_Name,
+    clusterOptions = markerClusterOptions()) %>%
+  addCircles(
+    data=ECPri,
+    group="Emergency Contraception",
+    radius=5000,
+    color="orange"
+  ) %>%
+  addAwesomeMarkers(
+    data=SayanaNGO,
+    group = "Sayana Press",
+    icon = ~health_icons[fftype],
+#    popup = SayanaNGO$fftype,
+    label = SayanaNGO$Facility_Name,
+    clusterOptions = markerClusterOptions()) %>%
+  addCircles(
+    data=SayanaNGO,
+    group="Sayana Press",
+    radius=5000,
+    color="blue"
+  ) %>%
+  addAwesomeMarkers(
+    data=SayanaPub,
+    group = "Sayana Press",
+    icon = ~health_icons[fftype],
+#    popup = SayanaPub$fftype,
+    label = SayanaPub$Facility_Name,
+    clusterOptions = markerClusterOptions()) %>%
+  addCircles(
+    data=SayanaPub,
+    group="Sayana Press",
+    radius=5000,
+    color="purple"
+  ) %>%
+  addAwesomeMarkers(
+    data=SayanaPri,
+    group = "Sayana Press",
+    icon = ~health_icons[fftype],
+#    popup = SayanaPri$fftype,
+    label = SayanaPri$Facility_Name,
+    clusterOptions = markerClusterOptions()) %>%
+  addCircles(
+    data=SayanaPri,
+    group="Sayana Press",
+    radius=5000,
+    color="orange"
+  )%>%
+  addLayersControl(overlayGroups = c("Oral","Intrauterine Device",
+            "Injectables","Implants","Emergency Contraception","Sayana Press"),
+           options = layersControlOptions(collapsed = FALSE)) %>%
+  addControl(html = html_legend, position = "bottomleft") %>%
+  addScaleBar()
+
+
+saveWidget(m, file="20190318_malawi_map_method_layer.html")

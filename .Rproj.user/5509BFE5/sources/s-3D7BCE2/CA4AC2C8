@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1553804244516.000,
+    "dirty" : false,
+    "encoding" : "ISO8859-1",
+    "folds" : "",
+    "hash" : "4078072585",
+    "id" : "CA4AC2C8",
+    "lastKnownWriteTime" : 1553806471,
+    "last_content_update" : 1553806471614,
+    "path" : "~/gulf-coast-r-leaflet-lesson/leaflet_lesson.R",
+    "project_path" : "leaflet_lesson.R",
+    "properties" : {
+        "cursorPosition" : "89,0",
+        "scrollLine" : "63",
+        "tempName" : "Untitled1"
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}
